@@ -1,0 +1,450 @@
+---
+title: "560 Midterm"
+author: "Trish Wells"
+date: "2/11/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(caret)
+library(FNN)
+library(class)
+library(rpart)
+library(rpart.plot)
+```
+
+## #2. B) Impute the missing values in the table.
+
+
+
+```{r }
+df <- read_excel("C:/Users/wells/Desktop/TBANLT 560/Midterm/impute.xlsx")
+
+df <- df[1:23,]
+
+#Impute Data3 column values using mean
+data3nulls <- which(is.na(df$DATA3))
+
+df[data3nulls,]$DATA3 <- mean(df$DATA3, na.rm = TRUE)
+
+#Impute Data5 column using multiple linear regression
+data5nulls <- which(is.na(df$DATA5))
+
+lmdata5<-lm(DATA5 ~ DATA1+
+              DATA2+
+              DATA3+
+              DATA4+
+              DATA6+
+              DATA7+
+              DATA8,data=df)
+summary(lmdata5) #Only last 3 vars are significant
+
+lmdata5<-lm(DATA5 ~ 
+              DATA6+
+              DATA7+
+              DATA8,data=df)
+summary(lmdata5)
+
+b1 <- df[data5nulls,7]*0.36416
+b2 <- df[data5nulls,8]*1.09686
+b3 <- df[data5nulls,9]*-2.10308
+
+pred <- b1+b2+b3+96.18077
+df[data5nulls,6] <- pred
+df
+```
+
+## #3. A) Split the data into 10 equal (roughly)  partitions.  That means that you will have 633/10 records in each partition.  Determine the number of records with a value of BK = 0 in each partition – how many a value of BK = 0 in each partition.  BK is the variable.
+
+```{r}
+df3 <- read_excel("C:/Users/wells/Desktop/TBANLT 560/Midterm/DataforQuestion3.xlsx")
+
+
+testsplit <- split(df3, f=1:10)
+for (i in 1:10){
+  assign(paste("part", i, sep=""), as.data.frame(testsplit[i]))
+  }
+
+
+bkvalues <- c(sum(part1$X1.bktype==0),
+              sum(part2$X2.bktype==0),
+              sum(part3$X3.bktype==0),
+              sum(part4$X4.bktype==0),
+              sum(part5$X5.bktype==0),
+              sum(part6$X6.bktype==0),
+              sum(part7$X7.bktype==0),
+              sum(part8$X8.bktype==0),
+              sum(part9$X9.bktype==0),
+              sum(part10$X10.bktype==0))
+bkvalues
+
+
+```
+## #3. B)	Generate a subset of the data set with all the records that have a value of BK = 0 (should be 79)  and an equal number of BK=1 (randomly selected from the remaining records, BK=1).    Calculate the mean for DATA1 for each type BK=0, BK=1.
+
+
+```{r}
+
+
+bk0 <- df3 %>% filter(bktype==0)
+bk1 <- df3 %>% filter(bktype==1)
+bk1sample <- bk1[sample(rownames(bk1), nrow(bk0)),]
+
+bk5050 <- rbind(bk0, bk1sample)
+
+DATA1mean <- aggregate(bk5050$DATA1...47, list(bk5050$bktype), FUN=mean)
+DATA1mean
+
+```
+
+## #3. C) Conduct a t test for difference in the means of the two groups in the subset.  Put your results here.
+
+```{r}
+ttest <-t.test(DATA1...47 ~ bktype, data = bk5050, var.equal = TRUE)
+ttest
+
+#p-value <.01 supports alternative hypothesis that true difference in means is not equal to zero; there is a statistical difference between the two means.
+
+
+```
+
+## #5. A) Calculate the confusion matrix for cutoff of 0.6 and 0.8.
+
+```{r}
+library(caret)
+ActualY <- c(0,1,0,1,1,0,1)
+PredictedY <- c(.5,.9,.7,.7,.3,.4,.5)
+confusiondf <- data.frame(ActualY, PredictedY)
+
+
+matrix.6 <-confusionMatrix(as.factor(ifelse(confusiondf$PredictedY>0.6, '1', '0')), 
+                as.factor(confusiondf$ActualY))
+matrix.6
+
+matrix.8 <-confusionMatrix(as.factor(ifelse(confusiondf$PredictedY>0.8, '1', '0')), 
+                as.factor(confusiondf$ActualY))
+matrix.8
+
+confusiondf$Output0.6 <- ifelse(PredictedY>0.6,1,0)
+confusiondf$Output0.8 <- ifelse(PredictedY>0.8,1,0)
+
+confusiondf
+```
+
+
+## #5. B) Provide the recall, precision, accuracy, and F1 Measure values for both 0.6 and 0.8.
+
+```{r}
+Threshold<- c(0.6,0.8)
+error0.6 <- (2+1)/7
+error0.8 <- (3+0)/7
+
+accuracy0.6 <- 1-error0.6
+accuracy0.8 <- 1-error0.8
+Accuracy <- c(accuracy0.6, accuracy0.8)
+
+recall0.6 <- 2/7
+recall0.8 <- 1/7
+Recall <- c(recall0.6,recall0.8)
+
+precision0.6 <- 2/3
+precision0.8 <- 1/1
+Precision <- c(precision0.6,precision0.8)
+
+f1.6 <- 2*((precision0.6*recall0.6)/(precision0.6+recall0.6))
+f1.8 <- 2*((precision0.8*recall0.8)/(precision0.8+recall0.8))
+F1 <- c(f1.6,f1.8)
+
+Accuracytable <- data.frame(Threshold, Accuracy, Recall, Precision, F1)
+Accuracytable
+
+```
+
+## #6. Randomly select the data so that there are 10 records for the training data and 10 for the test.  Using KNN identify the test data classes.   Determine the K from possible values of 3, 4, and 5 that will give you the best accuracy for the test cases.   Note: you will want to convert the variable values to integer to perform KNN.
+
+
+```{r}
+df6 <- read_csv("q6_data.csv")
+df6$Age <- as.integer(as.factor(df6$Age))
+
+df6$`Spectacle prescription` <- as.integer(as.factor(df6$`Spectacle prescription`))
+
+df6 <- df6 %>% rename(Spec=`Spectacle prescription`, Tear=`Tear production rate`, Class=`Class label Lenses`)
+
+df6$Astigmatic <- as.integer(as.factor(df6$Astigmatic))
+
+df6$Tear <- as.integer(as.factor(df6$Tear))
+
+df6$Class <- as.factor(df6$Class)
+
+trainrows <- sample(row.names(df6), 0.5*dim(df6)[1])
+validrows <- setdiff(row.names(df6), trainrows)
+traindf <- df6[trainrows,]
+validdf <- df6[validrows,]
+
+nn3 <- knn(train=traindf[,2:5], test=validdf[,2:5],
+           cl=traindf$Class, k=3)
+nn4 <- knn(train=traindf[,2:5], test=validdf[,2:5],
+           cl=traindf$Class, k=4)
+nn5 <- knn(train=traindf[,2:5], test=validdf[,2:5],
+           cl=traindf$Class, k=5)
+
+accuracydf <- data.frame(k=c(3,4,5), accuracy=c(0,0,0))
+
+for(i in 3:5){
+  knn.pred <- knn(traindf[,2:5], validdf[,2:5],
+                  cl = traindf$Class, k=i)
+  accuracydf[i-2,2] <- confusionMatrix(knn.pred,validdf$Class)$overall[1]
+}
+
+accuracydf
+```
+
+
+## #7. Construct a decision tree manually using the Gini impurity measure.
+
+```{r}
+color <- c("Grey", "Yellow", "Brown", "Grey", "Yellow")
+height <- c(10,10,3,10,4)
+label <- c("Elephant", "Giraffe", "Monkey", "Elephant", "Tiger")
+dtreedf <- data.frame(color, height, label)
+EP <- length(which(dtreedf$label == "Elephant"))
+GP <- length(which(dtreedf$label == "Giraffe"))
+MP <- length(which(dtreedf$label == "Monkey"))
+TP <- length(which(dtreedf$label == "Tiger"))
+N <- length(dtreedf$label)
+
+gini0 <- 1 - ((EP/N)^2 + (GP/N)^2 + (MP/N)^2 + (TP/N)^2)
+
+# Split by Height, < 10
+height0 <- row.names(dtreedf)[which(dtreedf$height<10)]
+height10 <- setdiff(row.names(dtreedf), height0)
+heightsplit0 <- dtreedf[height0,]
+heightsplit10 <- dtreedf[height10,]
+
+# Calculate proportions for heightsplit0
+EP0 <- length(which(heightsplit0$label == "Elephant"))
+GP0 <- length(which(heightsplit0$label == "Giraffe"))
+MP0 <- length(which(heightsplit0$label == "Monkey"))
+TP0 <- length(which(heightsplit0$label == "Tiger"))
+N0 <- length(heightsplit0$label)
+
+# Calculate proportions for heightsplit10
+EP10 <- length(which(heightsplit10$label == "Elephant"))
+GP10 <- length(which(heightsplit10$label == "Giraffe"))
+MP10 <- length(which(heightsplit10$label == "Monkey"))
+TP10 <- length(which(heightsplit10$label == "Tiger"))
+N10 <- length(heightsplit10$label)
+
+giniheight0 <- 1 - ((EP0/N0)^2 + (GP0/N0)^2 + (MP0/N0)^2 + (TP0/N0)^2)
+
+giniheight10 <- 1 - ((EP10/N10)^2 + (GP10/N10)^2 + (MP10/N10)^2 + (TP10/N10)^2)
+
+totalginiheight <- (N0/N)*giniheight0 + (N10/N)*giniheight10
+# 0.46667
+
+# Now repeat for splitting by color.
+# First split tested: Grey vs Yellow/Brown
+
+# Split by Grey vs Yellow/Brown
+colorgrey <- row.names(dtreedf)[which(dtreedf$color == "Grey")]
+coloryb <- setdiff(row.names(dtreedf), colorgrey)
+colorygreysplit <- dtreedf[colorgrey,]
+colorybsplit <- dtreedf[coloryb,]
+
+# Calculate proportions for colorgreysplit
+EPg <- length(which(colorygreysplit$label == "Elephant"))
+GPg <- length(which(colorygreysplit$label == "Giraffe"))
+MPg <- length(which(colorygreysplit$label == "Monkey"))
+TPg <- length(which(colorygreysplit$label == "Tiger"))
+Ng <- length(colorygreysplit$label)
+
+# Calculate proportions for colorybsplit
+EPyb <- length(which(colorybsplit$label == "Elephant"))
+GPyb <- length(which(colorybsplit$label == "Giraffe"))
+MPyb <- length(which(colorybsplit$label == "Monkey"))
+TPyb <- length(which(colorybsplit$label == "Tiger"))
+Nyb <- length(colorybsplit$label)
+
+ginicolorgrey <- 1 - ((EPg/Ng)^2 + (GPg/Ng)^2 + (MPg/Ng)^2 + (TPg/Ng)^2)
+
+ginicoloryb <- 1 - ((EPyb/Nyb)^2 + (GPyb/Nyb)^2 + (MPyb/Nyb)^2 + (TPyb/Nyb)^2)
+
+totalginicolorgrey <- (Ng/N)*ginicolorgrey + (Nyb/N)*ginicoloryb
+# 0.40
+
+# Split by Yellow vs Grey/Brown
+coloryellow <- row.names(dtreedf)[which(dtreedf$color == "Yellow")]
+colorgb <- setdiff(row.names(dtreedf), coloryellow)
+coloryellowsplit <- dtreedf[coloryellow,]
+colorgbsplit <- dtreedf[colorgb,]
+
+# Calculate proportions for coloryellowsplit
+EPy <- length(which(coloryellowsplit$label == "Elephant"))
+GPy <- length(which(coloryellowsplit$label == "Giraffe"))
+MPy <- length(which(coloryellowsplit$label == "Monkey"))
+TPy <- length(which(coloryellowsplit$label == "Tiger"))
+Ny <- length(coloryellowsplit$label)
+
+# Calculate proportions for colorgbsplit
+EPgb <- length(which(colorgbsplit$label == "Elephant"))
+GPgb <- length(which(colorgbsplit$label == "Giraffe"))
+MPgb <- length(which(colorgbsplit$label == "Monkey"))
+TPgb <- length(which(colorgbsplit$label == "Tiger"))
+Ngb <- length(colorgbsplit$label)
+
+ginicoloryellow <- 1 - ((EPy/Ny)^2 + (GPy/Ny)^2 + (MPy/Ny)^2 + (TPy/Ny)^2)
+
+ginicolorgb <- 1 - ((EPgb/Ngb)^2 + (GPgb/Ngb)^2 + (MPgb/Ngb)^2 + (TPgb/Ngb)^2)
+
+totalginicoloryellow <- (Ny/N)*ginicoloryellow + (Ngb/N)*ginicolorgb
+# 0.46667
+
+# Split by Brown vs Yellow/Grey
+colorbrown <- row.names(dtreedf)[which(dtreedf$color == "Brown")]
+coloryg <- setdiff(row.names(dtreedf), colorbrown)
+colorbrownsplit <- dtreedf[colorbrown,]
+colorygsplit <- dtreedf[coloryg,]
+
+# Calculate proportions for colorbrownsplit
+EPb <- length(which(colorbrownsplit$label == "Elephant"))
+GPb <- length(which(colorbrownsplit$label == "Giraffe"))
+MPb <- length(which(colorbrownsplit$label == "Monkey"))
+TPb <- length(which(colorbrownsplit$label == "Tiger"))
+Nb <- length(colorbrownsplit$label)
+
+# Calculate proportions for colorygsplit
+EPyg <- length(which(colorygsplit$label == "Elephant"))
+GPyg <- length(which(colorygsplit$label == "Giraffe"))
+MPyg <- length(which(colorygsplit$label == "Monkey"))
+TPyg <- length(which(colorygsplit$label == "Tiger"))
+Nyg <- length(colorygsplit$label)
+
+ginicolorbrown <- 1 - ((EPb/Nb)^2 + (GPb/Nb)^2 + (MPb/Nb)^2 + (TPb/Nb)^2)
+
+ginicoloryg <- 1 - ((EPyg/Nyg)^2 + (GPyg/Nyg)^2 + (MPyg/Nyg)^2 + (TPyg/Nyg)^2)
+
+totalginicolorbrown <- (Nb/N)*ginicolorbrown + (Nyg/N)*ginicoloryg
+# 0.50
+
+# Splitting by the color Grey gets us the lowest gini.
+# If color is grey, label is Elephant. End of branch.
+
+# If color is not grey, we need another branch.
+# This branch starts from the colorybsplit table.
+# We can either split by height or color.
+# Lets test height first. 
+
+# Split by Height, < 10
+heightg0 <- row.names(colorybsplit)[which(colorybsplit$height<10)]
+heightg10 <- setdiff(row.names(colorybsplit), heightg0)
+heightsplitg0 <- colorybsplit[heightg0,]
+heightsplitg10 <- colorybsplit[heightg10,]
+
+# Calculate proportions for heightsplitg0
+EPg0 <- length(which(heightsplitg0$label == "Elephant"))
+GPg0 <- length(which(heightsplitg0$label == "Giraffe"))
+MPg0 <- length(which(heightsplitg0$label == "Monkey"))
+TPg0 <- length(which(heightsplitg0$label == "Tiger"))
+Ng0 <- length(heightsplitg0$label)
+
+# Calculate proportions for heightsplitg10
+EPg10 <- length(which(heightsplitg10$label == "Elephant"))
+GPg10 <- length(which(heightsplitg10$label == "Giraffe"))
+MPg10 <- length(which(heightsplitg10$label == "Monkey"))
+TPg10 <- length(which(heightsplitg10$label == "Tiger"))
+Ng10 <- length(heightsplitg10$label)
+
+giniheightg0 <- 1 - ((EPg0/Ng0)^2 + (GPg0/Ng0)^2 + (MPg0/Ng0)^2 + (TPg0/Ng0)^2)
+
+giniheightg10 <- 1 - ((EPg10/Ng10)^2 + (GPg10/Ng10)^2 + (MPg10/Ng10)^2 + (TPg10/Ng10)^2)
+
+totalginigheight <- (Ng0/Nyb)*giniheightg0 + (Ng10/Nyb)*giniheightg10
+# 0.333333
+
+# Now test split by color, Yellow or Brown
+colorgbrown <- row.names(colorybsplit)[which(colorybsplit$color == "Brown")]
+colorgyellow <- setdiff(row.names(colorybsplit), colorgbrown)
+colorgbrownsplit <- colorybsplit[colorgbrown,]
+colorgyellowsplit <- colorybsplit[colorgyellow,]
+
+# Calculate proportions for colorgbrownsplit
+EPggb <- length(which(colorgbrownsplit$label == "Elephant"))
+GPggb <- length(which(colorgbrownsplit$label == "Giraffe"))
+MPggb <- length(which(colorgbrownsplit$label == "Monkey"))
+TPggb <- length(which(colorgbrownsplit$label == "Tiger"))
+Nggb <- length(colorgbrownsplit$label)
+
+# Calculate proportions for colorgyellowsplit
+EPggy <- length(which(colorgyellowsplit$label == "Elephant"))
+GPggy <- length(which(colorgyellowsplit$label == "Giraffe"))
+MPggy <- length(which(colorgyellowsplit$label == "Monkey"))
+TPggy <- length(which(colorgyellowsplit$label == "Tiger"))
+Nggy <- length(colorgyellowsplit$label)
+
+ginicolorgbrown <- 1 - ((EPggb/Nggb)^2 + (GPggb/Nggb)^2 + (MPggb/Nggb)^2 + (TPggb/Nggb)^2)
+
+ginicolorgyellow <- 1 - ((EPggy/Nggy)^2 + (GPggy/Nggy)^2 + (MPggy/Nggy)^2 + (TPggy/Nggy)^2)
+
+totalginicolorgbrown <- (Nggb/Nyb)*ginicolorgbrown + (Nggy/Nyb)*ginicolorgyellow
+# 0.333333
+
+# The ginis are tied @ 0.3333. Using either split will end up successfully classifying the remaining labels:
+## Split by height, then split by Yellow/Brown or
+## Split by Yellow/Brown, then split by height.
+```
+
+## #8. Say you have 1000 fruits which could be either ‘banana’, ‘orange’ or ‘other’. These are the 3 possible classes of the Y variable. We have data for the following X variables, all of which are binary (1 or 0). If a fruit is long, sweet, and yellow, what is it?
+
+```{r}
+Type<-c("Banana", "Orange", "Other", "Total")
+Long<-c(400,0,100,500)
+NotLong<-c(100,300,100,500)
+Sweet<-c(350,150,150,650)
+NotSweet<-c(150,150,50,350)
+Yellow<-c(450,300,50,800)
+NotYellow<-c(50,0,150,200)
+Total<-c(500,300,200,1000)
+fruitdf<-data.frame(Type,Long,NotLong,Sweet,NotSweet,Yellow,NotYellow,Total)
+fruitdf
+
+plong<-fruitdf[4,2]/fruitdf[4,8]
+psweet<-fruitdf[4,4]/fruitdf[4,8]
+pyellow<-fruitdf[4,6]/fruitdf[4,8]
+
+pbanana<-fruitdf[1,8]/fruitdf[4,8]
+porange<-fruitdf[2,8]/fruitdf[4,8]
+pother<-fruitdf[3,8]/fruitdf[4,8]
+
+plongbanana<-fruitdf[1,2]/fruitdf[1,8]
+psweetbanana<-fruitdf[1,4]/fruitdf[1,8]
+pyellowbanana<-fruitdf[1,6]/fruitdf[1,8]
+
+plongorange<-fruitdf[2,2]/fruitdf[2,8]
+psweetorange<-fruitdf[2,4]/fruitdf[2,8]
+pyelloworange<-fruitdf[2,6]/fruitdf[2,8]
+
+plongother<-fruitdf[3,2]/fruitdf[3,8]
+psweetother<-fruitdf[3,4]/fruitdf[3,8]
+pyellowother<-fruitdf[3,6]/fruitdf[3,8]
+
+## Probability of being a banana given long, sweet, and yellow
+bananaprob <- (plongbanana*psweetbanana*pyellowbanana*pbanana)/
+  (plong*psweet*pyellow)
+
+## Probability of being an orange given long, sweet, and yellow
+orangeprob <- (plongorange*psweetorange*pyelloworange*porange)
+
+## Probability of being other given long, sweet, and yellow
+otherprob <- (plongother*psweetother*pyellowother*pother)/
+  (plong*psweet*pyellow)
+
+bananaprob
+orangeprob
+otherprob
+```
+
